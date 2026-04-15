@@ -5,12 +5,22 @@ import {
   writeResponseToNodeResponse,
 } from '@angular/ssr/node';
 import express from 'express';
+import { createServer } from 'node:http';
 import { join } from 'node:path';
+import { ExpressPeerServer } from 'peer';
 
 const browserDistFolder = join(import.meta.dirname, '../browser');
+const peerServerKey = 'drop-games';
 
 const app = express();
+const server = createServer(app);
 const angularApp = new AngularNodeAppEngine();
+const peerServer = ExpressPeerServer(server, {
+  key: peerServerKey,
+  proxied: true,
+});
+
+app.use('/peerjs', peerServer);
 
 /**
  * Example Express Rest API endpoints can be defined here.
@@ -53,11 +63,11 @@ app.use((req, res, next) => {
  */
 if (isMainModule(import.meta.url) || process.env['pm_id']) {
   const port = process.env['PORT'] || 4000;
-  app.listen(port, (error) => {
-    if (error) {
-      throw error;
-    }
+  server.on('error', (error) => {
+    throw error;
+  });
 
+  server.listen(port, () => {
     console.log(`Node Express server listening on http://localhost:${port}`);
   });
 }
