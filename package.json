@@ -4,7 +4,8 @@
   "scripts": {
     "ng": "ng",
     "peer:dev": "node scripts/dev-peer-server.mjs",
-    "start": "concurrently -k -n app,peer \"ng serve\" \"bun run peer:dev\"",
+    "dev": "concurrently -k -n app,peer \"ng serve\" \"bun run peer:dev\"",
+    "start": "node dist/drop-games/server/server.mjs",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
