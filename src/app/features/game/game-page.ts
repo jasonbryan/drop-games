@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, computed, effect, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
@@ -20,6 +20,7 @@ export class GamePageComponent {
   protected readonly game = inject(PeerGameService);
   protected readonly cells = Array.from({ length: 9 }, (_, index) => index);
   protected readonly copyState = signal<'idle' | 'copied' | 'error'>('idle');
+  protected readonly qrCodeDataUrl = signal('');
 
   protected readonly statusMessage = computed(() => {
     const connectionState = this.game.connectionState();
@@ -215,6 +216,17 @@ export class GamePageComponent {
   });
 
   constructor() {
+    effect(() => {
+      const shareUrl = this.game.shareUrl();
+
+      if (!shareUrl) {
+        this.qrCodeDataUrl.set('');
+        return;
+      }
+
+      void this.generateQrCode(shareUrl);
+    });
+
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe((params) => {
       const roomId = params.get('roomId');
 
@@ -321,6 +333,27 @@ export class GamePageComponent {
 
     window.clearTimeout(this.copyToastTimeoutId);
     this.copyToastTimeoutId = null;
+  }
+
+  private async generateQrCode(shareUrl: string): Promise<void> {
+    try {
+      const { toDataURL } = await import('qrcode');
+      const dataUrl = await toDataURL(shareUrl, {
+        errorCorrectionLevel: 'M',
+        margin: 1,
+        width: 256,
+        color: {
+          dark: '#09090b',
+          light: '#f4f4f5',
+        },
+      });
+
+      if (this.game.shareUrl() === shareUrl) {
+        this.qrCodeDataUrl.set(dataUrl);
+      }
+    } catch {
+      this.qrCodeDataUrl.set('');
+    }
   }
 
   private capitalize(value: string): string {
