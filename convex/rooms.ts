@@ -25,8 +25,8 @@ interface RoomView {
 }
 
 interface SyncParticipantResult {
-  role: ParticipantRole;
-  playerSymbol: PlayerSymbol;
+  role: ParticipantRole | null;
+  playerSymbol: PlayerSymbol | null;
 }
 
 const playerRoleValidator = v.union(v.literal('host'), v.literal('guest'));
@@ -55,8 +55,8 @@ const roomViewValidator = v.object({
 });
 
 const syncParticipantResultValidator = v.object({
-  role: playerRoleValidator,
-  playerSymbol: playerSymbolValidator,
+  role: v.union(playerRoleValidator, v.null()),
+  playerSymbol: v.union(playerSymbolValidator, v.null()),
 });
 
 export const watchRoom = query({
@@ -131,7 +131,10 @@ export const syncParticipant = mutation({
       }
 
       if (!guestAvailable) {
-        throw new Error('This room already has two players.');
+        return {
+          role: null,
+          playerSymbol: null,
+        };
       }
 
       await claimParticipantSlot(ctx, existingRoom._id, 'guest', sessionId, now);
@@ -157,7 +160,10 @@ export const syncParticipant = mutation({
       };
     }
 
-    throw new Error('This room already has two active players.');
+    return {
+      role: null,
+      playerSymbol: null,
+    };
   },
 });
 

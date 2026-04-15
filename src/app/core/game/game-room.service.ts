@@ -134,12 +134,22 @@ export class GameRoomService {
 
       this.roleSignal.set(result.role);
       this.playerSymbolSignal.set(result.playerSymbol);
-      this.connectionStateSignal.set(result.role === 'host' ? 'waiting' : 'connecting');
+      if (result.role === 'host') {
+        this.connectionStateSignal.set('waiting');
+      } else if (result.role === 'guest') {
+        this.connectionStateSignal.set('connecting');
+      } else {
+        this.connectionStateSignal.set('connected');
+      }
       this.errorMessageSignal.set(null);
 
       this.subscribeToRoom(client, normalizedRoomId, participantId);
       this.startPresenceClock();
-      this.startHeartbeat(client, normalizedRoomId, participantId);
+      if (result.role !== null) {
+        this.startHeartbeat(client, normalizedRoomId, participantId);
+      } else {
+        this.stopHeartbeat();
+      }
     } catch (error) {
       this.setErrorState(this.describeRoomError(error));
     }
@@ -297,7 +307,14 @@ export class GameRoomService {
     const playerSymbol = room.playerSymbol;
 
     if (role === null || playerSymbol === null) {
-      this.setErrorState('This room session is no longer assigned to a player slot.');
+      const hostPresence = this.getPresence(room.hostOccupied, room.hostLastSeenAt, Date.now());
+      const guestPresence = this.getPresence(room.guestOccupied, room.guestLastSeenAt, Date.now());
+
+      this.peerPresenceSignal.set(
+        hostPresence === 'connected' || guestPresence === 'connected' ? 'connected' : 'disconnected',
+      );
+      this.connectionStateSignal.set('connected');
+      this.errorMessageSignal.set(null);
       return;
     }
 

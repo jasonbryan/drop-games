@@ -26,12 +26,17 @@ export class GamePageComponent {
     const connectionState = this.game.connectionState();
     const winner = this.game.winner();
     const errorMessage = this.game.errorMessage();
+    const role = this.game.role();
 
     if (winner === 'draw') {
       return 'Draw game. Hit play again for another round.';
     }
 
     if (winner === 'X' || winner === 'O') {
+      if (role === null) {
+        return `Round finished. ${winner} won.`;
+      }
+
       return this.game.playerSymbol() === winner ? 'You won the round.' : 'Your opponent won the round.';
     }
 
@@ -52,6 +57,10 @@ export class GamePageComponent {
     }
 
     if (connectionState === 'connected') {
+      if (role === null) {
+        return 'Spectating live game.';
+      }
+
       return this.game.isMyTurn() ? 'Your turn.' : 'Opponent turn.';
     }
 
@@ -66,6 +75,12 @@ export class GamePageComponent {
     const peerPresence = this.game.peerPresence();
 
     if (winner !== null) {
+      if (role === null) {
+        return winner === 'draw'
+          ? 'The game ended in a draw.'
+          : `${winner} completed the winning line first.`;
+      }
+
       return winner === 'draw'
         ? 'Nobody wins this round.'
         : this.game.playerSymbol() === winner
@@ -88,6 +103,10 @@ export class GamePageComponent {
     }
 
     if (connectionState === 'connected') {
+      if (role === null) {
+        return 'You joined as a spectator. Board updates in real time.';
+      }
+
       return this.game.isMyTurn()
         ? 'Pick any open square to make your move.'
         : 'Watch for their move. The board updates automatically.';
@@ -109,7 +128,11 @@ export class GamePageComponent {
     const symbol = this.game.playerSymbol();
     const currentTurn = this.game.currentTurn();
 
-    if (!role || !symbol) {
+    if (role === null) {
+      return `${currentTurn} moves next • Spectator mode`;
+    }
+
+    if (!symbol) {
       return 'Room is loading.';
     }
 
@@ -121,8 +144,8 @@ export class GamePageComponent {
     const connectionState = this.game.connectionState();
     const peerPresence = this.game.peerPresence();
 
-    if (!role) {
-      return 'Assigning player';
+    if (role === null) {
+      return 'Spectator';
     }
 
     if (role === 'host') {
@@ -165,6 +188,10 @@ export class GamePageComponent {
     const connectionState = this.game.connectionState();
     const winner = this.game.winner();
     const peerPresence = this.game.peerPresence();
+
+    if (role === null) {
+      return 'border-sky-400/30 bg-sky-400/10 text-sky-100';
+    }
 
     if (connectionState === 'connected' && this.game.isMyTurn() && winner === null) {
       return 'border-violet-400/30 bg-violet-400/12 text-violet-100 shadow-[0_0_0_1px_rgba(167,139,250,0.15)] motion-safe:animate-pulse';
