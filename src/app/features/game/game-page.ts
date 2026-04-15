@@ -229,13 +229,14 @@ export class GamePageComponent {
 
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe((params) => {
       const roomId = params.get('roomId');
+      const joinMode = this.route.snapshot.queryParamMap.get('join');
 
       if (!roomId) {
         void this.router.navigateByUrl('/');
         return;
       }
 
-      void this.game.startRoom(roomId);
+      void this.game.startRoom(roomId, joinMode === '1' ? 'guest' : 'auto');
     });
 
     this.destroyRef.onDestroy(() => {

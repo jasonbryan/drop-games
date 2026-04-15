@@ -25,7 +25,9 @@ export class HomePageComponent {
       return;
     }
 
-    await this.router.navigate(['/game', roomId]);
+    await this.router.navigate(['/game', roomId], {
+      queryParams: { join: 1 },
+    });
   }
 
   protected updateJoinValue(value: string): void {

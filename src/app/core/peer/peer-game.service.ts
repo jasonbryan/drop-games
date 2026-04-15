@@ -12,6 +12,7 @@ type PeerInstance = import('peerjs').Peer;
 type DataConnection = import('peerjs').DataConnection;
 
 type PeerRole = 'host' | 'guest' | null;
+type RoomStartMode = 'auto' | 'guest';
 type ConnectionState =
   | 'idle'
   | 'starting'
@@ -102,7 +103,7 @@ export class PeerGameService {
       return '';
     }
 
-    return `${window.location.origin}/game/${roomId}`;
+    return `${window.location.origin}/game/${roomId}?join=1`;
   });
   readonly isMyTurn = computed(() => {
     const playerSymbol = this.playerSymbolSignal();
@@ -119,7 +120,7 @@ export class PeerGameService {
     window.addEventListener('beforeunload', this.handlePageHide);
   }
 
-  async startRoom(roomId: string): Promise<void> {
+  async startRoom(roomId: string, mode: RoomStartMode = 'auto'): Promise<void> {
     if (!this.browser) {
       return;
     }
@@ -135,6 +136,11 @@ export class PeerGameService {
     this.destroyTransport();
 
     try {
+      if (mode === 'guest') {
+        await this.becomeGuest(normalizedRoomId);
+        return;
+      }
+
       await this.becomeHost(normalizedRoomId);
     } catch (error) {
       if (this.isUnavailableIdError(error)) {
