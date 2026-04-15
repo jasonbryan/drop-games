@@ -3,7 +3,7 @@ import { Component, DestroyRef, computed, effect, inject, signal } from '@angula
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
-import { PeerGameService } from '../../core/peer/peer-game.service';
+import { GameRoomService } from '../../core/game/game-room.service';
 
 @Component({
   selector: 'app-game-page',
@@ -17,7 +17,7 @@ export class GamePageComponent {
   private readonly destroyRef = inject(DestroyRef);
   private copyToastTimeoutId: number | null = null;
 
-  protected readonly game = inject(PeerGameService);
+  protected readonly game = inject(GameRoomService);
   protected readonly cells = Array.from({ length: 9 }, (_, index) => index);
   protected readonly copyState = signal<'idle' | 'copied' | 'error'>('idle');
   protected readonly qrCodeDataUrl = signal('');
@@ -74,7 +74,7 @@ export class GamePageComponent {
     }
 
     if (connectionState === 'starting') {
-      return 'Claiming the room and establishing your PeerJS session.';
+      return 'Claiming the room and syncing the initial Convex state.';
     }
 
     if (connectionState === 'waiting') {
@@ -84,7 +84,7 @@ export class GamePageComponent {
     }
 
     if (connectionState === 'connecting') {
-      return 'You are joining as O. This can take a second while the peer connection opens.';
+      return 'You are joining as O. This can take a second while the shared room state connects.';
     }
 
     if (connectionState === 'connected') {

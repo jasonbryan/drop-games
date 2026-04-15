@@ -3,8 +3,9 @@
   "version": "0.0.0",
   "scripts": {
     "ng": "ng",
-    "peer:dev": "node scripts/dev-peer-server.mjs",
-    "dev": "concurrently -k -n app,peer \"ng serve\" \"bun run peer:dev\"",
+    "convex:dev": "npx convex dev",
+    "dev": "ng serve",
+    "dev:full": "concurrently -k -n app,convex \"ng serve\" \"bun run convex:dev\"",
     "start": "node dist/drop-games/server/server.mjs",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
@@ -22,9 +23,8 @@
     "@angular/platform-server": "^21.2.0",
     "@angular/router": "^21.2.0",
     "@angular/ssr": "^21.2.6",
+    "convex": "^1.35.1",
     "express": "^5.1.0",
-    "peer": "^1.0.2",
-    "peerjs": "^1.5.5",
     "qrcode": "^1.5.4",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0"

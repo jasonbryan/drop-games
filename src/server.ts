@@ -7,20 +7,12 @@ import {
 import express from 'express';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
-import { ExpressPeerServer } from 'peer';
 
 const browserDistFolder = join(import.meta.dirname, '../browser');
-const peerServerKey = 'drop-games';
 
 const app = express();
 const server = createServer(app);
 const angularApp = new AngularNodeAppEngine();
-const peerServer = ExpressPeerServer(server, {
-  key: peerServerKey,
-  proxied: true,
-});
-
-app.use('/peerjs', peerServer);
 
 /**
  * Example Express Rest API endpoints can be defined here.
