@@ -19,6 +19,11 @@
           "options": {
             "browser": "src/main.ts",
             "tsConfig": "tsconfig.app.json",
+            "allowedCommonJsDependencies": [
+              "qrcode",
+              "dijkstrajs",
+              "pngjs"
+            ],
             "assets": [
               {
                 "glob": "**/*",
@@ -30,11 +35,6 @@
             ],
             "server": "src/main.server.ts",
             "outputMode": "server",
-            "security": {
-              "allowedHosts": [
-                "*"
-              ]
-            },
             "ssr": {
               "entry": "src/server.ts"
             }

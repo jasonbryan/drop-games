@@ -19,6 +19,8 @@ export class GamePageComponent {
   private copyToastTimeoutId: number | null = null;
   private rollAnimationIntervalId: number | null = null;
   private audioContext: AudioContext | null = null;
+  private readonly rollAnimationFrameMs = 120;
+  private readonly rollAnimationMinDurationMs = 1200;
 
   protected readonly game = inject(GameRoomService);
   protected readonly cells = Array.from({ length: 9 }, (_, index) => index);
@@ -460,6 +462,24 @@ export class GamePageComponent {
     return value === null ? '-' : `${value}`;
   }
 
+  protected shouldShowPotentialYahtzeeScore(category: string): boolean {
+    const state = this.game.yahtzeeState();
+    const role = this.game.role();
+    if (!state || !role || !this.game.hasActiveMatch() || !this.game.isMyTurn()) {
+      return false;
+    }
+    const card = role === 'host' ? state.scorecardHost : state.scorecardGuest;
+    return card[category] === null && state.rollNumber > 0;
+  }
+
+  protected potentialYahtzeeScore(category: string): string {
+    const state = this.game.yahtzeeState();
+    if (!state) {
+      return '-';
+    }
+    return `${this.scoreForCategory(category, state.dice)}`;
+  }
+
   protected formatYahtzeeCategory(category: string): string {
     return category
       .replace(/([A-Z])/g, ' $1')
@@ -511,7 +531,11 @@ export class GamePageComponent {
 
     this.startRollEffects(state.dice, state.heldDice);
     try {
-      await this.game.rollYahtzee();
+      const rollPromise = this.game.rollYahtzee();
+      const delayPromise = new Promise<void>((resolve) =>
+        window.setTimeout(() => resolve(), this.rollAnimationMinDurationMs),
+      );
+      await Promise.all([rollPromise, delayPromise]);
     } finally {
       this.stopRollEffects();
     }
@@ -531,7 +555,7 @@ export class GamePageComponent {
         }
       }
       this.animatedDice.set(nextDice);
-    }, 70);
+    }, this.rollAnimationFrameMs);
   }
 
   private stopRollEffects(): void {
@@ -583,6 +607,77 @@ export class GamePageComponent {
     gain.connect(ctx.destination);
     source.start(now);
     source.stop(now + duration);
+  }
+
+  private scoreForCategory(category: string, dice: number[]): number {
+    const counts = this.countDice(dice);
+    const sum = dice.reduce((total, value) => total + value, 0);
+    switch (category) {
+      case 'ones':
+      case 'twos':
+      case 'threes':
+      case 'fours':
+      case 'fives':
+      case 'sixes': {
+        const target = ['ones', 'twos', 'threes', 'fours', 'fives', 'sixes'].indexOf(category) + 1;
+        return dice.filter((value) => value === target).reduce((total, value) => total + value, 0);
+      }
+      case 'threeOfAKind':
+        return this.hasCount(counts, 3) ? sum : 0;
+      case 'fourOfAKind':
+        return this.hasCount(counts, 4) ? sum : 0;
+      case 'fullHouse':
+        return this.isFullHouse(counts) ? 25 : 0;
+      case 'smallStraight':
+        return this.hasStraight(dice, 4) ? 30 : 0;
+      case 'largeStraight':
+        return this.hasStraight(dice, 5) ? 40 : 0;
+      case 'yahtzee':
+        return this.hasCount(counts, 5) ? 50 : 0;
+      case 'chance':
+        return sum;
+      default:
+        return 0;
+    }
+  }
+
+  private countDice(dice: number[]): Map<number, number> {
+    const counts = new Map<number, number>();
+    for (const value of dice) {
+      counts.set(value, (counts.get(value) ?? 0) + 1);
+    }
+    return counts;
+  }
+
+  private hasCount(counts: Map<number, number>, target: number): boolean {
+    for (const count of counts.values()) {
+      if (count >= target) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private isFullHouse(counts: Map<number, number>): boolean {
+    const values = [...counts.values()].sort((left, right) => left - right);
+    return values.length === 2 && values[0] === 2 && values[1] === 3;
+  }
+
+  private hasStraight(dice: number[], length: 4 | 5): boolean {
+    const uniqueSorted = [...new Set(dice)].sort((left, right) => left - right);
+    let streak = 1;
+    let best = 1;
+    for (let index = 1; index < uniqueSorted.length; index += 1) {
+      if (uniqueSorted[index] === uniqueSorted[index - 1] + 1) {
+        streak += 1;
+        if (streak > best) {
+          best = streak;
+        }
+      } else {
+        streak = 1;
+      }
+    }
+    return best >= length;
   }
 
   private async generateQrCode(shareUrl: string): Promise<void> {

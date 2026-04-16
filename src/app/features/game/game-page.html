@@ -84,7 +84,20 @@
                 (click)="scoreYahtzee(category)"
               >
                 <span>{{ formatYahtzeeCategory(category) }}</span>
-                <span class="font-medium">{{ yahtzeeCategoryScore(category) }}</span>
+                <span
+                  class="font-medium"
+                  [class]="shouldShowPotentialYahtzeeScore(category)
+                    ? 'text-emerald-100'
+                    : 'text-zinc-100'"
+                >
+                  @if (yahtzeeCategoryScore(category) !== '-') {
+                    {{ yahtzeeCategoryScore(category) }}
+                  } @else if (shouldShowPotentialYahtzeeScore(category)) {
+                    {{ potentialYahtzeeScore(category) }}
+                  } @else {
+                    -
+                  }
+                </span>
               </button>
             }
           </div>
