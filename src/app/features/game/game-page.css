@@ -8,6 +8,10 @@
   padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
 }
 
+.copy-label-compact {
+  display: none;
+}
+
 @media (max-height: 760px) {
   .game-header {
     padding-top: 0.75rem;
@@ -107,6 +111,14 @@
 
   .game-invite-panel {
     display: none;
+  }
+
+  .copy-label-full {
+    display: none;
+  }
+
+  .copy-label-compact {
+    display: inline;
   }
 }
 

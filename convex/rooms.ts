@@ -284,6 +284,7 @@ export const makeMove = mutation({
     if ((room.gameSlug ?? 'tic-tac-toe') !== 'tic-tac-toe') {
       throw new Error('makeMove is only available for Tic Tac Toe rooms.');
     }
+    ensureActiveTwoPlayerMatch(room);
     const nextSnapshot = await makeTicTacToeMove(ctx, roomId, args.index, getPlayerSymbolForRole(role));
     await updatePresence(ctx, room._id, role, Date.now());
     return nextSnapshot;
@@ -332,6 +333,7 @@ export const rollYahtzee = mutation({
     if (!room || (room.gameSlug ?? 'tic-tac-toe') !== 'yahtzee') {
       throw new Error('Room does not support Yahtzee rolls.');
     }
+    ensureActiveTwoPlayerMatch(room);
     const role = getRoleForSession(room, sessionId);
     if (!role) {
       throw new Error('Spectators cannot roll dice.');
@@ -356,6 +358,7 @@ export const toggleYahtzeeHold = mutation({
     if (!room || (room.gameSlug ?? 'tic-tac-toe') !== 'yahtzee') {
       throw new Error('Room does not support Yahtzee holds.');
     }
+    ensureActiveTwoPlayerMatch(room);
     const role = getRoleForSession(room, sessionId);
     if (!role) {
       throw new Error('Spectators cannot hold dice.');
@@ -380,6 +383,7 @@ export const scoreYahtzee = mutation({
     if (!room || (room.gameSlug ?? 'tic-tac-toe') !== 'yahtzee') {
       throw new Error('Room does not support Yahtzee scoring.');
     }
+    ensureActiveTwoPlayerMatch(room);
     const role = getRoleForSession(room, sessionId);
     if (!role) {
       throw new Error('Spectators cannot submit scores.');
@@ -492,4 +496,13 @@ function toSyncResult(role: ParticipantRole, gameSlug: GameSlug): SyncParticipan
     playerSymbol: getPlayerSymbolForRole(role),
     gameSlug,
   };
+}
+
+function ensureActiveTwoPlayerMatch(room: RoomDoc): void {
+  const now = Date.now();
+  const hostActive = Boolean(room.hostSessionId) && isParticipantActive(room.hostLastSeenAt, now);
+  const guestActive = Boolean(room.guestSessionId) && isParticipantActive(room.guestLastSeenAt, now);
+  if (!hostActive || !guestActive) {
+    throw new Error('Wait until both players are connected before starting play.');
+  }
 }

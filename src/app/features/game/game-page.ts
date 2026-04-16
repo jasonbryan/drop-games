@@ -17,6 +17,8 @@ export class GamePageComponent {
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
   private copyToastTimeoutId: number | null = null;
+  private rollAnimationIntervalId: number | null = null;
+  private audioContext: AudioContext | null = null;
 
   protected readonly game = inject(GameRoomService);
   protected readonly cells = Array.from({ length: 9 }, (_, index) => index);
@@ -37,6 +39,11 @@ export class GamePageComponent {
   ];
   protected readonly copyState = signal<'idle' | 'copied' | 'error'>('idle');
   protected readonly qrCodeDataUrl = signal('');
+  protected readonly isAnimatingRoll = signal(false);
+  protected readonly animatedDice = signal<number[] | null>(null);
+  protected readonly visibleDice = computed(
+    () => this.animatedDice() ?? this.game.yahtzeeState()?.dice ?? [],
+  );
 
   protected readonly statusMessage = computed(() => {
     const connectionState = this.game.connectionState();
@@ -336,7 +343,7 @@ export class GamePageComponent {
   }
 
   protected rollYahtzee(): void {
-    this.game.rollYahtzee();
+    void this.runRollWithEffects();
   }
 
   protected toggleYahtzeeHold(index: number): void {
@@ -356,7 +363,10 @@ export class GamePageComponent {
   }
 
   protected primaryActionDisabled(): boolean {
-    return this.game.gameSlug() === 'yahtzee' ? !this.canRollYahtzee() : false;
+    if (this.game.gameSlug() === 'yahtzee') {
+      return !this.canRollYahtzee();
+    }
+    return !this.game.hasActiveMatch();
   }
 
   protected runPrimaryAction(): void {
@@ -415,13 +425,26 @@ export class GamePageComponent {
 
   protected canRollYahtzee(): boolean {
     const state = this.game.yahtzeeState();
-    return this.game.gameSlug() === 'yahtzee' && this.game.isMyTurn() && !!state && state.rollNumber < 3;
+    return (
+      this.game.gameSlug() === 'yahtzee' &&
+      this.game.hasActiveMatch() &&
+      this.game.isMyTurn() &&
+      !this.isAnimatingRoll() &&
+      !!state &&
+      state.rollNumber < 3
+    );
   }
 
   protected canScoreYahtzee(category: string): boolean {
     const state = this.game.yahtzeeState();
     const role = this.game.role();
-    if (this.game.gameSlug() !== 'yahtzee' || !state || !role || !this.game.isMyTurn()) {
+    if (
+      this.game.gameSlug() !== 'yahtzee' ||
+      !this.game.hasActiveMatch() ||
+      !state ||
+      !role ||
+      !this.game.isMyTurn()
+    ) {
       return false;
     }
     const card = role === 'host' ? state.scorecardHost : state.scorecardGuest;
@@ -478,6 +501,88 @@ export class GamePageComponent {
 
     window.clearTimeout(this.copyToastTimeoutId);
     this.copyToastTimeoutId = null;
+  }
+
+  private async runRollWithEffects(): Promise<void> {
+    const state = this.game.yahtzeeState();
+    if (!state || this.isAnimatingRoll()) {
+      return;
+    }
+
+    this.startRollEffects(state.dice, state.heldDice);
+    try {
+      await this.game.rollYahtzee();
+    } finally {
+      this.stopRollEffects();
+    }
+  }
+
+  private startRollEffects(baseDice: number[], heldDice: boolean[]): void {
+    this.stopRollEffects();
+    this.isAnimatingRoll.set(true);
+    this.animatedDice.set([...baseDice]);
+    this.playDiceRollSound();
+
+    this.rollAnimationIntervalId = window.setInterval(() => {
+      const nextDice = [...(this.animatedDice() ?? baseDice)];
+      for (let index = 0; index < nextDice.length; index += 1) {
+        if (!heldDice[index]) {
+          nextDice[index] = Math.floor(Math.random() * 6) + 1;
+        }
+      }
+      this.animatedDice.set(nextDice);
+    }, 70);
+  }
+
+  private stopRollEffects(): void {
+    if (this.rollAnimationIntervalId !== null) {
+      window.clearInterval(this.rollAnimationIntervalId);
+      this.rollAnimationIntervalId = null;
+    }
+    this.isAnimatingRoll.set(false);
+    this.animatedDice.set(null);
+  }
+
+  private playDiceRollSound(): void {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const Context = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Context) {
+      return;
+    }
+
+    this.audioContext ??= new Context();
+    const ctx = this.audioContext;
+    const now = ctx.currentTime;
+    const duration = 0.45;
+
+    const bufferSize = Math.floor(ctx.sampleRate * duration);
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let index = 0; index < bufferSize; index += 1) {
+      data[index] = (Math.random() * 2 - 1) * (1 - index / bufferSize);
+    }
+
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(900, now);
+    filter.Q.setValueAtTime(0.8, now);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.24, now + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+    source.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+    source.start(now);
+    source.stop(now + duration);
   }
 
   private async generateQrCode(shareUrl: string): Promise<void> {

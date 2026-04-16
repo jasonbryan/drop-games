@@ -56,14 +56,14 @@
       } @else {
         <div class="game-yahtzee-panel mt-3 rounded-xl border border-white/10 bg-white/3 p-3">
           <div class="mb-2 flex flex-wrap gap-2">
-            @for (die of game.yahtzeeState()?.dice ?? []; track $index) {
+            @for (die of visibleDice(); track $index) {
               <button
                 type="button"
                 class="game-die h-12 w-12 rounded-lg border text-base font-semibold"
                 [class]="(game.yahtzeeState()?.heldDice?.[$index] ?? false)
                   ? 'border-emerald-400/40 bg-emerald-400/12 text-emerald-100'
                   : 'border-white/10 bg-white/5 text-zinc-100'"
-                [disabled]="!game.isMyTurn()"
+                [disabled]="!game.isMyTurn() || isAnimatingRoll()"
                 (click)="toggleYahtzeeHold($index)"
               >
                 {{ die }}
@@ -142,7 +142,8 @@
         class="inline-flex items-center justify-center rounded-lg border border-white/10 bg-white/10 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/15"
         (click)="copyLink()"
       >
-        {{ copyButtonLabel() }}
+        <span class="copy-label-full">{{ copyButtonLabel() }}</span>
+        <span class="copy-label-compact">Invite</span>
       </button>
       <button
         type="button"

@@ -87,6 +87,9 @@ export class GameRoomService {
   readonly winningLine = computed(() => this.snapshotSignal().winningLine);
   readonly errorMessage = computed(() => this.errorMessageSignal());
   readonly peerPresence = computed(() => this.peerPresenceSignal());
+  readonly hasActiveMatch = computed(
+    () => this.connectionStateSignal() === 'connected' && this.peerPresenceSignal() === 'connected',
+  );
   readonly shareUrl = computed(() =>
     !this.browser || !this.roomIdSignal()
       ? ''
@@ -145,7 +148,7 @@ export class GameRoomService {
   }
 
   makeMove(index: number): void {
-    if (this.gameSlugSignal() !== 'tic-tac-toe' || !this.canPlayCell(index)) return;
+    if (this.gameSlugSignal() !== 'tic-tac-toe' || !this.canPlayCell(index) || !this.hasActiveMatch()) return;
     if (!this.client || !this.roomIdSignal() || !this.participantId) return;
     void this.client
       .mutation(api.rooms.makeMove, { roomId: this.roomIdSignal(), sessionId: this.participantId, index })
@@ -159,15 +162,32 @@ export class GameRoomService {
       .catch(() => {});
   }
 
-  rollYahtzee(): void {
-    if (this.gameSlugSignal() !== 'yahtzee' || !this.client || !this.roomIdSignal() || !this.participantId) return;
-    void this.client
-      .mutation(api.rooms.rollYahtzee, { roomId: this.roomIdSignal(), sessionId: this.participantId })
-      .catch(() => {});
+  async rollYahtzee(): Promise<void> {
+    if (
+      this.gameSlugSignal() !== 'yahtzee' ||
+      !this.client ||
+      !this.roomIdSignal() ||
+      !this.participantId ||
+      !this.hasActiveMatch()
+    ) {
+      return;
+    }
+    await this.client.mutation(api.rooms.rollYahtzee, {
+      roomId: this.roomIdSignal(),
+      sessionId: this.participantId,
+    });
   }
 
   toggleYahtzeeHold(dieIndex: number): void {
-    if (this.gameSlugSignal() !== 'yahtzee' || !this.client || !this.roomIdSignal() || !this.participantId) return;
+    if (
+      this.gameSlugSignal() !== 'yahtzee' ||
+      !this.client ||
+      !this.roomIdSignal() ||
+      !this.participantId ||
+      !this.hasActiveMatch()
+    ) {
+      return;
+    }
     void this.client
       .mutation(api.rooms.toggleYahtzeeHold, {
         roomId: this.roomIdSignal(),
@@ -178,7 +198,15 @@ export class GameRoomService {
   }
 
   scoreYahtzee(category: string): void {
-    if (this.gameSlugSignal() !== 'yahtzee' || !this.client || !this.roomIdSignal() || !this.participantId) return;
+    if (
+      this.gameSlugSignal() !== 'yahtzee' ||
+      !this.client ||
+      !this.roomIdSignal() ||
+      !this.participantId ||
+      !this.hasActiveMatch()
+    ) {
+      return;
+    }
     void this.client
       .mutation(api.rooms.scoreYahtzee, {
         roomId: this.roomIdSignal(),
@@ -196,6 +224,7 @@ export class GameRoomService {
       Number.isInteger(index) &&
       index >= 0 &&
       index < snapshot.board.length &&
+      this.hasActiveMatch() &&
       this.connectionStateSignal() === 'connected' &&
       symbol !== null &&
       snapshot.winner === null &&
