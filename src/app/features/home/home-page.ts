@@ -1,6 +1,7 @@
 import { Component, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { GAME_CATALOG, type GameSlug, getGameDefinition } from '../../games/catalog';
 
 @Component({
   selector: 'app-home-page',
@@ -10,22 +11,26 @@ import { Router } from '@angular/router';
 })
 export class HomePageComponent {
   protected readonly joinValue = signal('');
+  protected readonly games = GAME_CATALOG;
+  protected readonly selectedGameSlug = signal<GameSlug>('tic-tac-toe');
 
   constructor(private readonly router: Router) {}
 
-  protected async createGame(): Promise<void> {
+  protected async createGame(gameSlug: GameSlug): Promise<void> {
     const roomId = this.generateRoomId();
-    await this.router.navigate(['/game', roomId]);
+    await this.router.navigate(['/play', gameSlug, roomId]);
   }
 
   protected async joinGame(): Promise<void> {
-    const roomId = this.normalizeRoomId(this.joinValue());
+    const normalized = this.normalizeRoomInput(this.joinValue());
 
-    if (!roomId) {
+    if (!normalized) {
       return;
     }
 
-    await this.router.navigate(['/game', roomId], {
+    this.selectedGameSlug.set(normalized.gameSlug);
+
+    await this.router.navigate(['/play', normalized.gameSlug, normalized.roomId], {
       queryParams: { join: 1 },
     });
   }
@@ -42,7 +47,7 @@ export class HomePageComponent {
     return Math.random().toString(36).slice(2, 10);
   }
 
-  private normalizeRoomId(value: string): string | null {
+  private normalizeRoomInput(value: string): { roomId: string; gameSlug: GameSlug } | null {
     const trimmed = value.trim();
 
     if (!trimmed) {
@@ -52,12 +57,27 @@ export class HomePageComponent {
     try {
       const url = new URL(trimmed);
       const segments = url.pathname.split('/').filter(Boolean);
-      const roomId = segments.at(-1)?.toLowerCase() ?? '';
+      const maybeRoomId = segments.at(-1)?.toLowerCase() ?? '';
+      const maybeGameSlug = segments.at(-2)?.toLowerCase() ?? '';
+      const game = getGameDefinition(maybeGameSlug);
+      const roomId = maybeRoomId.replace(/[^a-z0-9-]/g, '');
 
-      return roomId || null;
+      if (!roomId) {
+        return null;
+      }
+
+      return {
+        roomId,
+        gameSlug: game?.slug ?? this.selectedGameSlug(),
+      };
     } catch {
       const roomId = trimmed.toLowerCase().replace(/[^a-z0-9-]/g, '');
-      return roomId || null;
+      return roomId
+        ? {
+            roomId,
+            gameSlug: this.selectedGameSlug(),
+          }
+        : null;
     }
   }
 }

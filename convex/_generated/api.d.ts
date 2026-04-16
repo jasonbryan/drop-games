@@ -8,6 +8,9 @@
  * @module
  */
 
+import type * as games_ticTacToe from "../games/ticTacToe.js";
+import type * as games_yahtzee from "../games/yahtzee.js";
+import type * as lib_rooms from "../lib/rooms.js";
 import type * as rooms from "../rooms.js";
 
 import type {
@@ -17,6 +20,9 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "games/ticTacToe": typeof games_ticTacToe;
+  "games/yahtzee": typeof games_yahtzee;
+  "lib/rooms": typeof lib_rooms;
   rooms: typeof rooms;
 }>;
 

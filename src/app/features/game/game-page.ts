@@ -4,6 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
 import { GameRoomService } from '../../core/game/game-room.service';
+import { getGameDefinition, type GameSlug } from '../../games/catalog';
 
 @Component({
   selector: 'app-game-page',
@@ -19,6 +20,21 @@ export class GamePageComponent {
 
   protected readonly game = inject(GameRoomService);
   protected readonly cells = Array.from({ length: 9 }, (_, index) => index);
+  protected readonly yahtzeeCategories = [
+    'ones',
+    'twos',
+    'threes',
+    'fours',
+    'fives',
+    'sixes',
+    'threeOfAKind',
+    'fourOfAKind',
+    'fullHouse',
+    'smallStraight',
+    'largeStraight',
+    'yahtzee',
+    'chance',
+  ];
   protected readonly copyState = signal<'idle' | 'copied' | 'error'>('idle');
   protected readonly qrCodeDataUrl = signal('');
 
@@ -27,6 +43,10 @@ export class GamePageComponent {
     const winner = this.game.winner();
     const errorMessage = this.game.errorMessage();
     const role = this.game.role();
+
+    if (this.game.gameSlug() === 'yahtzee' && winner !== null) {
+      return winner === 'draw' ? 'Yahtzee match ended in a draw.' : `Yahtzee winner: ${winner}`;
+    }
 
     if (winner === 'draw') {
       return 'Draw game. Hit play again for another round.';
@@ -124,6 +144,12 @@ export class GamePageComponent {
   });
 
   protected readonly detailMessage = computed(() => {
+    if (this.game.gameSlug() === 'yahtzee') {
+      const state = this.game.yahtzeeState();
+      if (!state) return 'Yahtzee room is loading.';
+      return `Roll ${state.rollNumber}/3 • ${state.currentTurn} turn`;
+    }
+
     const role = this.game.role();
     const symbol = this.game.playerSymbol();
     const currentTurn = this.game.currentTurn();
@@ -242,6 +268,38 @@ export class GamePageComponent {
     }
   });
 
+  protected readonly statusCardClasses = computed(() => {
+    const state = this.game.connectionState();
+    const role = this.game.role();
+    const winner = this.game.winner();
+
+    if (winner !== null) {
+      return winner === 'draw'
+        ? 'border-amber-400/30 bg-amber-400/10 text-amber-100'
+        : role !== null && this.game.playerSymbol() === winner
+          ? 'border-emerald-400/30 bg-emerald-400/12 text-emerald-100'
+          : 'border-sky-400/30 bg-sky-400/10 text-sky-100';
+    }
+
+    if (state === 'error' || state === 'disconnected') {
+      return 'border-rose-400/30 bg-rose-400/10 text-rose-100';
+    }
+
+    if (state === 'waiting' || state === 'connecting' || state === 'starting') {
+      return 'border-amber-400/30 bg-amber-400/10 text-amber-100';
+    }
+
+    if (state === 'connected') {
+      return role === null
+        ? 'border-sky-400/30 bg-sky-400/10 text-sky-100'
+        : this.game.isMyTurn()
+          ? 'border-violet-400/30 bg-violet-400/12 text-violet-100'
+          : 'border-emerald-400/30 bg-emerald-400/10 text-emerald-100';
+    }
+
+    return 'border-white/10 bg-white/5 text-zinc-200';
+  });
+
   constructor() {
     effect(() => {
       const shareUrl = this.game.shareUrl();
@@ -256,14 +314,15 @@ export class GamePageComponent {
 
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe((params) => {
       const roomId = params.get('roomId');
+      const gameSlug = params.get('gameSlug');
       const joinMode = this.route.snapshot.queryParamMap.get('join');
 
-      if (!roomId) {
+      if (!roomId || !gameSlug || !getGameDefinition(gameSlug)) {
         void this.router.navigateByUrl('/');
         return;
       }
 
-      void this.game.startRoom(roomId, joinMode === '1' ? 'guest' : 'auto');
+      void this.game.startRoom(gameSlug as GameSlug, roomId, joinMode === '1' ? 'guest' : 'auto');
     });
 
     this.destroyRef.onDestroy(() => {
@@ -276,8 +335,36 @@ export class GamePageComponent {
     this.game.makeMove(index);
   }
 
+  protected rollYahtzee(): void {
+    this.game.rollYahtzee();
+  }
+
+  protected toggleYahtzeeHold(index: number): void {
+    this.game.toggleYahtzeeHold(index);
+  }
+
+  protected scoreYahtzee(category: string): void {
+    this.game.scoreYahtzee(category);
+  }
+
   protected resetGame(): void {
     this.game.resetGame();
+  }
+
+  protected primaryActionLabel(): string {
+    return this.game.gameSlug() === 'yahtzee' ? 'Roll' : 'Play again';
+  }
+
+  protected primaryActionDisabled(): boolean {
+    return this.game.gameSlug() === 'yahtzee' ? !this.canRollYahtzee() : false;
+  }
+
+  protected runPrimaryAction(): void {
+    if (this.game.gameSlug() === 'yahtzee') {
+      this.rollYahtzee();
+      return;
+    }
+    this.resetGame();
   }
 
   protected async copyLink(): Promise<void> {
@@ -324,6 +411,36 @@ export class GamePageComponent {
     return playable
       ? 'border-white/10 bg-white/5 text-zinc-100 shadow-[0_10px_30px_rgba(0,0,0,0.22)] hover:border-zinc-300/40 hover:bg-white/10'
       : 'border-white/10 bg-white/3 text-zinc-500 shadow-none';
+  }
+
+  protected canRollYahtzee(): boolean {
+    const state = this.game.yahtzeeState();
+    return this.game.gameSlug() === 'yahtzee' && this.game.isMyTurn() && !!state && state.rollNumber < 3;
+  }
+
+  protected canScoreYahtzee(category: string): boolean {
+    const state = this.game.yahtzeeState();
+    const role = this.game.role();
+    if (this.game.gameSlug() !== 'yahtzee' || !state || !role || !this.game.isMyTurn()) {
+      return false;
+    }
+    const card = role === 'host' ? state.scorecardHost : state.scorecardGuest;
+    return card[category] === null && state.rollNumber > 0;
+  }
+
+  protected yahtzeeCategoryScore(category: string): string {
+    const state = this.game.yahtzeeState();
+    const role = this.game.role();
+    if (!state || !role) return '-';
+    const card = role === 'host' ? state.scorecardHost : state.scorecardGuest;
+    const value = card[category];
+    return value === null ? '-' : `${value}`;
+  }
+
+  protected formatYahtzeeCategory(category: string): string {
+    return category
+      .replace(/([A-Z])/g, ' $1')
+      .replace(/^./, (value) => value.toUpperCase());
   }
 
   protected copyButtonLabel(): string {

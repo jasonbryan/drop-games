@@ -1,1 +1,112 @@
+.game-page-shell {
+  min-height: 100vh;
+  min-height: 100svh;
+  padding-bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+.game-action-bar {
+  padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+}
+
+@media (max-height: 760px) {
+  .game-header {
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+  }
+
+  .game-title {
+    font-size: 1.35rem;
+    line-height: 1.65rem;
+  }
+
+  .game-status-card {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+
+  .game-status-primary {
+    font-size: 0.95rem;
+    line-height: 1.2rem;
+  }
+
+  .game-status-secondary,
+  .game-status-tertiary {
+    line-height: 1.1rem;
+  }
+
+  .game-board-grid {
+    margin-top: 0.5rem;
+    gap: 0.35rem;
+  }
+
+  .game-cell {
+    font-size: 1.55rem;
+    line-height: 1.9rem;
+  }
+
+  .game-yahtzee-panel {
+    margin-top: 0.5rem;
+    padding: 0.5rem;
+  }
+
+  .game-die {
+    height: 2.6rem;
+    width: 2.6rem;
+    font-size: 0.95rem;
+    line-height: 1.2rem;
+  }
+
+  .game-yahtzee-score-grid {
+    max-height: 24vh;
+  }
+
+  .game-yahtzee-score-btn {
+    padding-top: 0.35rem;
+    padding-bottom: 0.35rem;
+    font-size: 0.7rem;
+  }
+
+  .game-invite-panel {
+    margin-top: 0.5rem;
+    padding: 0.5rem;
+  }
+
+  .game-action-bar {
+    padding-top: 0.45rem;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 540px) {
+  .game-page-shell {
+    padding-top: 0.5rem;
+    padding-bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .game-title {
+    font-size: 1.15rem;
+    line-height: 1.4rem;
+  }
+
+  .game-status-secondary,
+  .game-status-tertiary {
+    display: none;
+  }
+
+  .game-board-grid {
+    gap: 0.3rem;
+  }
+
+  .game-cell {
+    font-size: 1.25rem;
+    line-height: 1.55rem;
+  }
+
+  .game-yahtzee-score-grid {
+    max-height: 18vh;
+  }
+
+  .game-invite-panel {
+    display: none;
+  }
+}
 

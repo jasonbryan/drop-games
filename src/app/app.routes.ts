@@ -7,9 +7,13 @@ export const routes: Routes = [
       import('./features/home/home-page').then((module) => module.HomePageComponent),
   },
   {
-    path: 'game/:roomId',
+    path: 'play/:gameSlug/:roomId',
     loadComponent: () =>
       import('./features/game/game-page').then((module) => module.GamePageComponent),
+  },
+  {
+    path: 'game/:roomId',
+    redirectTo: 'play/tic-tac-toe/:roomId',
   },
   {
     path: '**',

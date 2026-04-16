@@ -1,32 +1,65 @@
 import { mutation, query, type MutationCtx, type QueryCtx } from './_generated/server';
 import type { Doc } from './_generated/dataModel';
 import { v } from 'convex/values';
-
+import { createTicTacToeGame, getTicTacToeGameByRoomId, makeTicTacToeMove, resetTicTacToeGame } from './games/ticTacToe';
 import {
-  applyMove,
-  createInitialSnapshot,
-  type GameSnapshot,
-  type PlayerSymbol,
-} from '../src/app/core/game/tic-tac-toe';
-
-type ParticipantRole = 'host' | 'guest';
+  createYahtzeeGame,
+  getYahtzeeGameByRoomId,
+  resetYahtzeeGame,
+  rollYahtzeeDice,
+  scoreYahtzeeCategory,
+  toggleYahtzeeDieHold,
+} from './games/yahtzee';
+import {
+  claimParticipantSlot,
+  getRoleForSession,
+  getRoomById,
+  isParticipantActive,
+  normalizeRoomId,
+  normalizeSessionId,
+  updatePresence,
+  type ParticipantRole,
+} from './lib/rooms';
 type RoomDoc = Doc<'rooms'>;
+type GameSlug = 'tic-tac-toe' | 'yahtzee';
 
 interface RoomView {
   roomId: string;
-  snapshot: GameSnapshot;
+  gameSlug: 'tic-tac-toe' | 'yahtzee';
   role: ParticipantRole | null;
-  playerSymbol: PlayerSymbol | null;
+  playerSymbol: 'X' | 'O' | null;
   hostOccupied: boolean;
   guestOccupied: boolean;
   hostLastSeenAt: number | null;
   guestLastSeenAt: number | null;
   updatedAt: number;
+  ticTacToeSnapshot:
+    | {
+        board: ('X' | 'O' | null)[];
+        currentTurn: 'X' | 'O';
+        winner: 'X' | 'O' | 'draw' | null;
+        winningLine: number[];
+      }
+    | null;
+  yahtzeeState: {
+    currentTurn: ParticipantRole;
+    rollNumber: number;
+    dice: number[];
+    heldDice: boolean[];
+    scorecardHost: Record<string, number | null>;
+    scorecardGuest: Record<string, number | null>;
+    upperBonusHost: number;
+    upperBonusGuest: number;
+    yahtzeeBonusHost: number;
+    yahtzeeBonusGuest: number;
+    winner: ParticipantRole | 'draw' | null;
+  } | null;
 }
 
 interface SyncParticipantResult {
   role: ParticipantRole | null;
-  playerSymbol: PlayerSymbol | null;
+  playerSymbol: 'X' | 'O' | null;
+  gameSlug: GameSlug;
 }
 
 const playerRoleValidator = v.union(v.literal('host'), v.literal('guest'));
@@ -34,6 +67,7 @@ const playerSymbolValidator = v.union(v.literal('X'), v.literal('O'));
 const cellValueValidator = v.union(v.literal('X'), v.literal('O'), v.null());
 const winnerValidator = v.union(v.literal('X'), v.literal('O'), v.literal('draw'), v.null());
 const roomModeValidator = v.union(v.literal('auto'), v.literal('guest'));
+const gameSlugValidator = v.union(v.literal('tic-tac-toe'), v.literal('yahtzee'));
 
 const snapshotValidator = v.object({
   board: v.array(cellValueValidator),
@@ -44,7 +78,7 @@ const snapshotValidator = v.object({
 
 const roomViewValidator = v.object({
   roomId: v.string(),
-  snapshot: snapshotValidator,
+  gameSlug: gameSlugValidator,
   role: v.union(v.literal('host'), v.literal('guest'), v.null()),
   playerSymbol: v.union(v.literal('X'), v.literal('O'), v.null()),
   hostOccupied: v.boolean(),
@@ -52,11 +86,29 @@ const roomViewValidator = v.object({
   hostLastSeenAt: v.union(v.number(), v.null()),
   guestLastSeenAt: v.union(v.number(), v.null()),
   updatedAt: v.number(),
+  ticTacToeSnapshot: v.union(snapshotValidator, v.null()),
+  yahtzeeState: v.union(
+    v.object({
+      currentTurn: playerRoleValidator,
+      rollNumber: v.number(),
+      dice: v.array(v.number()),
+      heldDice: v.array(v.boolean()),
+      scorecardHost: v.record(v.string(), v.union(v.number(), v.null())),
+      scorecardGuest: v.record(v.string(), v.union(v.number(), v.null())),
+      upperBonusHost: v.number(),
+      upperBonusGuest: v.number(),
+      yahtzeeBonusHost: v.number(),
+      yahtzeeBonusGuest: v.number(),
+      winner: v.union(playerRoleValidator, v.literal('draw'), v.null()),
+    }),
+    v.null(),
+  ),
 });
 
 const syncParticipantResultValidator = v.object({
   role: v.union(playerRoleValidator, v.null()),
   playerSymbol: v.union(playerSymbolValidator, v.null()),
+  gameSlug: gameSlugValidator,
 });
 
 export const watchRoom = query({
@@ -74,7 +126,7 @@ export const watchRoom = query({
       return null;
     }
 
-    return buildRoomView(room, sessionId);
+    return await buildRoomView(ctx, room, sessionId);
   },
 });
 
@@ -83,6 +135,7 @@ export const syncParticipant = mutation({
     roomId: v.string(),
     sessionId: v.string(),
     mode: roomModeValidator,
+    gameSlug: gameSlugValidator,
   },
   returns: syncParticipantResultValidator,
   handler: async (ctx, args): Promise<SyncParticipantResult> => {
@@ -96,10 +149,9 @@ export const syncParticipant = mutation({
         throw new Error('The room host is offline. Ask them to open the room link again.');
       }
 
-      const snapshot = createInitialSnapshot();
       await ctx.db.insert('rooms', {
         roomId,
-        snapshot,
+        gameSlug: args.gameSlug,
         hostSessionId: sessionId,
         guestSessionId: undefined,
         hostLastSeenAt: now,
@@ -107,17 +159,28 @@ export const syncParticipant = mutation({
         createdAt: now,
         updatedAt: now,
       });
+      if (args.gameSlug === 'tic-tac-toe') {
+        await createTicTacToeGame(ctx, roomId, now);
+      } else {
+        await createYahtzeeGame(ctx, roomId, now);
+      }
 
       return {
         role: 'host',
         playerSymbol: 'X',
+        gameSlug: args.gameSlug,
       };
+    }
+
+    const existingGameSlug = existingRoom.gameSlug ?? 'tic-tac-toe';
+    if (existingGameSlug !== args.gameSlug) {
+      throw new Error('Room link is for a different game type.');
     }
 
     const currentRole = getRoleForSession(existingRoom, sessionId);
     if (currentRole !== null) {
       await updatePresence(ctx, existingRoom._id, currentRole, now);
-      return toSyncResult(currentRole);
+      return toSyncResult(currentRole, existingGameSlug);
     }
 
     const hostActive = isParticipantActive(existingRoom.hostLastSeenAt, now);
@@ -134,6 +197,7 @@ export const syncParticipant = mutation({
         return {
           role: null,
           playerSymbol: null,
+          gameSlug: existingGameSlug,
         };
       }
 
@@ -141,6 +205,7 @@ export const syncParticipant = mutation({
       return {
         role: 'guest',
         playerSymbol: 'O',
+        gameSlug: existingGameSlug,
       };
     }
 
@@ -149,6 +214,7 @@ export const syncParticipant = mutation({
       return {
         role: 'host',
         playerSymbol: 'X',
+        gameSlug: existingGameSlug,
       };
     }
 
@@ -157,12 +223,14 @@ export const syncParticipant = mutation({
       return {
         role: 'guest',
         playerSymbol: 'O',
+        gameSlug: existingGameSlug,
       };
     }
 
     return {
       role: null,
       playerSymbol: null,
+      gameSlug: existingGameSlug,
     };
   },
 });
@@ -199,7 +267,7 @@ export const makeMove = mutation({
     index: v.number(),
   },
   returns: snapshotValidator,
-  handler: async (ctx, args): Promise<GameSnapshot> => {
+  handler: async (ctx, args) => {
     const roomId = normalizeRoomId(args.roomId);
     const sessionId = normalizeSessionId(args.sessionId);
     const room = await getRoomById(ctx, roomId);
@@ -213,18 +281,11 @@ export const makeMove = mutation({
       throw new Error('You are no longer connected to this room.');
     }
 
-    const nextSnapshot = applyMove(room.snapshot, args.index, getPlayerSymbolForRole(role));
-    if (areSnapshotsEqual(nextSnapshot, room.snapshot)) {
-      return room.snapshot;
+    if ((room.gameSlug ?? 'tic-tac-toe') !== 'tic-tac-toe') {
+      throw new Error('makeMove is only available for Tic Tac Toe rooms.');
     }
-
-    const now = Date.now();
-    await ctx.db.patch(room._id, {
-      snapshot: nextSnapshot,
-      updatedAt: now,
-      ...(role === 'host' ? { hostLastSeenAt: now } : { guestLastSeenAt: now }),
-    });
-
+    const nextSnapshot = await makeTicTacToeMove(ctx, roomId, args.index, getPlayerSymbolForRole(role));
+    await updatePresence(ctx, room._id, role, Date.now());
     return nextSnapshot;
   },
 });
@@ -234,8 +295,8 @@ export const resetGame = mutation({
     roomId: v.string(),
     sessionId: v.string(),
   },
-  returns: snapshotValidator,
-  handler: async (ctx, args): Promise<GameSnapshot> => {
+  returns: v.union(snapshotValidator, v.null()),
+  handler: async (ctx, args) => {
     const roomId = normalizeRoomId(args.roomId);
     const sessionId = normalizeSessionId(args.sessionId);
     const room = await getRoomById(ctx, roomId);
@@ -249,16 +310,83 @@ export const resetGame = mutation({
       throw new Error('You are no longer connected to this room.');
     }
 
-    const snapshot = createInitialSnapshot();
-    const now = Date.now();
+    await updatePresence(ctx, room._id, role, Date.now());
+    if ((room.gameSlug ?? 'tic-tac-toe') === 'tic-tac-toe') {
+      return await resetTicTacToeGame(ctx, roomId);
+    }
+    await resetYahtzeeGame(ctx, roomId);
+    return null;
+  },
+});
 
-    await ctx.db.patch(room._id, {
-      snapshot,
-      updatedAt: now,
-      ...(role === 'host' ? { hostLastSeenAt: now } : { guestLastSeenAt: now }),
-    });
+export const rollYahtzee = mutation({
+  args: {
+    roomId: v.string(),
+    sessionId: v.string(),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const roomId = normalizeRoomId(args.roomId);
+    const sessionId = normalizeSessionId(args.sessionId);
+    const room = await getRoomById(ctx, roomId);
+    if (!room || (room.gameSlug ?? 'tic-tac-toe') !== 'yahtzee') {
+      throw new Error('Room does not support Yahtzee rolls.');
+    }
+    const role = getRoleForSession(room, sessionId);
+    if (!role) {
+      throw new Error('Spectators cannot roll dice.');
+    }
+    await rollYahtzeeDice(ctx, roomId, role);
+    await updatePresence(ctx, room._id, role, Date.now());
+    return true;
+  },
+});
 
-    return snapshot;
+export const toggleYahtzeeHold = mutation({
+  args: {
+    roomId: v.string(),
+    sessionId: v.string(),
+    dieIndex: v.number(),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const roomId = normalizeRoomId(args.roomId);
+    const sessionId = normalizeSessionId(args.sessionId);
+    const room = await getRoomById(ctx, roomId);
+    if (!room || (room.gameSlug ?? 'tic-tac-toe') !== 'yahtzee') {
+      throw new Error('Room does not support Yahtzee holds.');
+    }
+    const role = getRoleForSession(room, sessionId);
+    if (!role) {
+      throw new Error('Spectators cannot hold dice.');
+    }
+    await toggleYahtzeeDieHold(ctx, roomId, role, args.dieIndex);
+    await updatePresence(ctx, room._id, role, Date.now());
+    return true;
+  },
+});
+
+export const scoreYahtzee = mutation({
+  args: {
+    roomId: v.string(),
+    sessionId: v.string(),
+    category: v.string(),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const roomId = normalizeRoomId(args.roomId);
+    const sessionId = normalizeSessionId(args.sessionId);
+    const room = await getRoomById(ctx, roomId);
+    if (!room || (room.gameSlug ?? 'tic-tac-toe') !== 'yahtzee') {
+      throw new Error('Room does not support Yahtzee scoring.');
+    }
+    const role = getRoleForSession(room, sessionId);
+    if (!role) {
+      throw new Error('Spectators cannot submit scores.');
+    }
+    await scoreYahtzeeCategory(ctx, roomId, role, args.category);
+    await updatePresence(ctx, room._id, role, Date.now());
+    return true;
   },
 });
 
@@ -314,39 +442,20 @@ export const leaveRoom = mutation({
   },
 });
 
-async function getRoomById(ctx: QueryCtx | MutationCtx, roomId: string): Promise<RoomDoc | null> {
-  return await ctx.db
-    .query('rooms')
-    .withIndex('by_room_id', (queryBuilder) => queryBuilder.eq('roomId', roomId))
-    .unique();
-}
-
-function normalizeRoomId(roomId: string): string {
-  const normalized = roomId.trim().toLowerCase();
-
-  if (!normalized) {
-    throw new Error('Invalid room link.');
-  }
-
-  return normalized;
-}
-
-function normalizeSessionId(sessionId: string): string {
-  const normalized = sessionId.trim();
-
-  if (!normalized) {
-    throw new Error('Invalid player session.');
-  }
-
-  return normalized;
-}
-
-function buildRoomView(room: RoomDoc, sessionId: string): RoomView {
+async function buildRoomView(
+  ctx: QueryCtx | MutationCtx,
+  room: RoomDoc,
+  sessionId: string,
+): Promise<RoomView> {
   const role = getRoleForSession(room, sessionId);
+  const gameSlug = room.gameSlug ?? 'tic-tac-toe';
+  const ticTacToeGame =
+    gameSlug === 'tic-tac-toe' ? await getTicTacToeGameByRoomId(ctx, room.roomId) : null;
+  const yahtzeeGame = gameSlug === 'yahtzee' ? await getYahtzeeGameByRoomId(ctx, room.roomId) : null;
 
   return {
     roomId: room.roomId,
-    snapshot: room.snapshot,
+    gameSlug,
     role,
     playerSymbol: role === null ? null : getPlayerSymbolForRole(role),
     hostOccupied: Boolean(room.hostSessionId),
@@ -354,90 +463,33 @@ function buildRoomView(room: RoomDoc, sessionId: string): RoomView {
     hostLastSeenAt: room.hostLastSeenAt ?? null,
     guestLastSeenAt: room.guestLastSeenAt ?? null,
     updatedAt: room.updatedAt,
+    ticTacToeSnapshot: ticTacToeGame?.snapshot ?? null,
+    yahtzeeState: yahtzeeGame
+      ? {
+          currentTurn: yahtzeeGame.currentTurn,
+          rollNumber: yahtzeeGame.rollNumber,
+          dice: yahtzeeGame.dice,
+          heldDice: yahtzeeGame.heldDice,
+          scorecardHost: yahtzeeGame.scorecardHost,
+          scorecardGuest: yahtzeeGame.scorecardGuest,
+          upperBonusHost: yahtzeeGame.upperBonusHost,
+          upperBonusGuest: yahtzeeGame.upperBonusGuest,
+          yahtzeeBonusHost: yahtzeeGame.yahtzeeBonusHost,
+          yahtzeeBonusGuest: yahtzeeGame.yahtzeeBonusGuest,
+          winner: yahtzeeGame.winner,
+        }
+      : null,
   };
 }
 
-function getRoleForSession(room: RoomDoc, sessionId: string): ParticipantRole | null {
-  if (room.hostSessionId === sessionId) {
-    return 'host';
-  }
-
-  if (room.guestSessionId === sessionId) {
-    return 'guest';
-  }
-
-  return null;
-}
-
-function getPlayerSymbolForRole(role: ParticipantRole): PlayerSymbol {
+function getPlayerSymbolForRole(role: ParticipantRole): 'X' | 'O' {
   return role === 'host' ? 'X' : 'O';
 }
 
-function isParticipantActive(lastSeenAt: number | undefined, now: number): boolean {
-  return typeof lastSeenAt === 'number' && now - lastSeenAt < 12_000;
-}
-
-async function updatePresence(
-  ctx: MutationCtx,
-  roomDocumentId: RoomDoc['_id'],
-  role: ParticipantRole,
-  now: number,
-): Promise<void> {
-  await ctx.db.patch(roomDocumentId, {
-    ...(role === 'host' ? { hostLastSeenAt: now } : { guestLastSeenAt: now }),
-    updatedAt: now,
-  });
-}
-
-async function claimParticipantSlot(
-  ctx: MutationCtx,
-  roomDocumentId: RoomDoc['_id'],
-  role: ParticipantRole,
-  sessionId: string,
-  now: number,
-): Promise<void> {
-  await ctx.db.patch(roomDocumentId, {
-    ...(role === 'host'
-      ? {
-          hostSessionId: sessionId,
-          hostLastSeenAt: now,
-        }
-      : {
-          guestSessionId: sessionId,
-          guestLastSeenAt: now,
-        }),
-    updatedAt: now,
-  });
-}
-
-function toSyncResult(role: ParticipantRole): SyncParticipantResult {
+function toSyncResult(role: ParticipantRole, gameSlug: GameSlug): SyncParticipantResult {
   return {
     role,
     playerSymbol: getPlayerSymbolForRole(role),
+    gameSlug,
   };
-}
-
-function areSnapshotsEqual(left: GameSnapshot, right: GameSnapshot): boolean {
-  if (
-    left.currentTurn !== right.currentTurn ||
-    left.winner !== right.winner ||
-    left.board.length !== right.board.length ||
-    left.winningLine.length !== right.winningLine.length
-  ) {
-    return false;
-  }
-
-  for (let index = 0; index < left.board.length; index += 1) {
-    if (left.board[index] !== right.board[index]) {
-      return false;
-    }
-  }
-
-  for (let index = 0; index < left.winningLine.length; index += 1) {
-    if (left.winningLine[index] !== right.winningLine[index]) {
-      return false;
-    }
-  }
-
-  return true;
 }

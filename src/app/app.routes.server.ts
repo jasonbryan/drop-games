@@ -3,10 +3,14 @@ import { RenderMode, ServerRoute } from '@angular/ssr';
 export const serverRoutes: ServerRoute[] = [
   {
     path: 'game/:roomId',
-    renderMode: RenderMode.Client
+    renderMode: RenderMode.Client,
+  },
+  {
+    path: 'play/:gameSlug/:roomId',
+    renderMode: RenderMode.Client,
   },
   {
     path: '**',
-    renderMode: RenderMode.Prerender
-  }
+    renderMode: RenderMode.Prerender,
+  },
 ];
