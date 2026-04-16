@@ -24,18 +24,13 @@
   }
 
   .game-status-card {
-    padding-top: 0.5rem;
-    padding-bottom: 0.5rem;
+    padding-top: 0.35rem;
+    padding-bottom: 0.35rem;
   }
 
   .game-status-primary {
-    font-size: 0.95rem;
-    line-height: 1.2rem;
-  }
-
-  .game-status-secondary,
-  .game-status-tertiary {
-    line-height: 1.1rem;
+    font-size: 0.875rem;
+    line-height: 1.15rem;
   }
 
   .game-board-grid {
@@ -89,11 +84,6 @@
   .game-title {
     font-size: 1.15rem;
     line-height: 1.4rem;
-  }
-
-  .game-status-secondary,
-  .game-status-tertiary {
-    display: none;
   }
 
   .game-board-grid {

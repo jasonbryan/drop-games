@@ -96,84 +96,6 @@ export class GamePageComponent {
     return 'Preparing the game board...';
   });
 
-  protected readonly statusDetail = computed(() => {
-    const connectionState = this.game.connectionState();
-    const winner = this.game.winner();
-    const errorMessage = this.game.errorMessage();
-    const role = this.game.role();
-    const peerPresence = this.game.peerPresence();
-
-    if (winner !== null) {
-      if (role === null) {
-        return winner === 'draw'
-          ? 'The game ended in a draw.'
-          : `${winner} completed the winning line first.`;
-      }
-
-      return winner === 'draw'
-        ? 'Nobody wins this round.'
-        : this.game.playerSymbol() === winner
-          ? 'You closed the winning line first.'
-          : 'They completed the winning line first.';
-    }
-
-    if (connectionState === 'starting') {
-      return 'Claiming the room and syncing the initial Convex state.';
-    }
-
-    if (connectionState === 'waiting') {
-      return peerPresence === 'disconnected'
-        ? 'Your room is still open, but the other player left.'
-        : 'You are the host. The game starts as soon as another player joins.';
-    }
-
-    if (connectionState === 'connecting') {
-      return 'You are joining as O. This can take a second while the shared room state connects.';
-    }
-
-    if (connectionState === 'connected') {
-      if (role === null) {
-        return 'You joined as a spectator. Board updates in real time.';
-      }
-
-      return this.game.isMyTurn()
-        ? 'Pick any open square to make your move.'
-        : 'Watch for their move. The board updates automatically.';
-    }
-
-    if (connectionState === 'disconnected' || connectionState === 'error') {
-      return errorMessage ?? 'The connection ended unexpectedly.';
-    }
-
-    if (!role) {
-      return 'Loading room details.';
-    }
-
-    return 'Room information is updating.';
-  });
-
-  protected readonly detailMessage = computed(() => {
-    if (this.game.gameSlug() === 'yahtzee') {
-      const state = this.game.yahtzeeState();
-      if (!state) return 'Yahtzee room is loading.';
-      return `Roll ${state.rollNumber}/3 • ${state.currentTurn} turn`;
-    }
-
-    const role = this.game.role();
-    const symbol = this.game.playerSymbol();
-    const currentTurn = this.game.currentTurn();
-
-    if (role === null) {
-      return `${currentTurn} moves next • Spectator mode`;
-    }
-
-    if (!symbol) {
-      return 'Room is loading.';
-    }
-
-    return `${this.capitalize(role)} player • You are ${symbol} • ${currentTurn} moves next`;
-  });
-
   protected readonly roleChipLabel = computed(() => {
     const role = this.game.role();
     const connectionState = this.game.connectionState();
@@ -699,9 +621,5 @@ export class GamePageComponent {
     } catch {
       this.qrCodeDataUrl.set('');
     }
-  }
-
-  private capitalize(value: string): string {
-    return `${value[0]?.toUpperCase() ?? ''}${value.slice(1)}`;
   }
 }
